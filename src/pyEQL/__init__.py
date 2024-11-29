@@ -27,11 +27,10 @@ logger = logging.getLogger("pyEQL")
 logger.setLevel(logging.WARNING)
 logger.addHandler(logging.NullHandler())
 
-
 # Units handling
 # per the pint documentation, it's important that pint and its associated Unit
 # Registry are only instantiated once.
-# here we assign the identifier 'unit' to the UnitRegistry
+# here we assign the identifier 'ureg' to the UnitRegistry
 # the cache_folder arg is added to speed up registry instantiation
 ureg = UnitRegistry(cache_folder=":auto:")
 # convert "offset units" so that, e.g. Quantity('25 degC') works without error
@@ -41,6 +40,14 @@ ureg.autoconvert_offset_to_baseunit = True
 ureg.enable_contexts("chemistry")
 # set the default string formatting for pint quantities
 ureg.default_format = "P~"
+
+# Extend the Unit Registry with missing units
+try:
+    ureg.define("ppb = 1e-9 * dimensionless")
+    ureg.define("percent = 0.01 * dimensionless")
+except ValueError:
+    # If units are already defined, skip
+    pass
 
 # create a Store for the default database
 json_db_file = files("pyEQL") / "database" / "pyeql_db.json"
