@@ -11,7 +11,7 @@ from importlib.metadata import PackageNotFoundError, version  # pragma: no cover
 from importlib.resources import files
 
 from maggma.stores import JSONStore
-from pint import UnitRegistry
+from pint import UnitRegistry, UndefinedUnitError
 
 try:
     # Change here if project is renamed and does not equal the package name
@@ -43,11 +43,17 @@ ureg.default_format = "P~"
 
 # Extend the Unit Registry with missing units
 try:
-    ureg.define("ppb = 1e-9 * dimensionless")
-    ureg.define("percent = 0.01 * dimensionless")
+    # Define ppb and percent if not already defined
+    if not hasattr(ureg, "ppb"):
+        ureg.define("ppb = 1e-9 * dimensionless")
+    if not hasattr(ureg, "percent"):
+        ureg.define("percent = 0.01 * dimensionless")
 except ValueError:
     # If units are already defined, skip
     pass
+
+# Debugging: Verify that units are defined in the registry
+logger.debug("Available units in the registry: %s", list(ureg))
 
 # create a Store for the default database
 json_db_file = files("pyEQL") / "database" / "pyeql_db.json"
@@ -58,3 +64,8 @@ IonDB = JSONStore(str(json_db_file), key="formula", encoding="utf8")
 IonDB.connect()
 
 from pyEQL.solution import Solution  # noqa: E402
+
+# Optional: Print units during initialization for debugging
+print("Successfully initialized the unit registry with the following units:")
+print(list(ureg))
+
