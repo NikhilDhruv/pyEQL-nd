@@ -9,9 +9,10 @@ and performing chemical thermodynamics computations.
 import logging
 from importlib.metadata import PackageNotFoundError, version  # pragma: no cover
 from importlib.resources import files
+from pathlib import Path
 
 from maggma.stores import JSONStore
-from pint import UnitRegistry, UndefinedUnitError
+from pint import UnitRegistry
 
 try:
     # Change here if project is renamed and does not equal the package name
@@ -41,19 +42,36 @@ ureg.enable_contexts("chemistry")
 # set the default string formatting for pint quantities
 ureg.default_format = "P~"
 
-# Extend the Unit Registry with missing units
+# Extend the Unit Registry with missing units programmatically
 try:
-    # Define ppb and percent if not already defined
-    if not hasattr(ureg, "ppb"):
+    if "ppb" not in ureg:
         ureg.define("ppb = 1e-9 * dimensionless")
-    if not hasattr(ureg, "percent"):
+    if "percent" not in ureg:
         ureg.define("percent = 0.01 * dimensionless")
 except ValueError:
     # If units are already defined, skip
     pass
 
-# Debugging: Verify that units are defined in the registry
-logger.debug("Available units in the registry: %s", list(ureg))
+# Debugging: Verify that ppb and percent are defined in the registry
+if "ppb" in ureg and "percent" in ureg:
+    print("Units successfully defined: ppb and percent")
+else:
+    print("Programmatic unit definition failed: ppb or percent not in registry")
+
+# Alternative: Load units from a custom definitions file if needed
+custom_units_path = Path(__file__).parent / "custom_units.txt"
+if custom_units_path.exists():
+    try:
+        ureg.load_definitions(str(custom_units_path))
+        print("Custom units file loaded successfully.")
+    except Exception as e:
+        print(f"Error loading custom units file: {e}")
+
+# Debugging: Confirm units are loaded
+if "ppb" in ureg and "percent" in ureg:
+    print("Final confirmation: ppb and percent units are available.")
+else:
+    print("Unit definition (both programmatic and file-based) failed.")
 
 # create a Store for the default database
 json_db_file = files("pyEQL") / "database" / "pyeql_db.json"
@@ -65,7 +83,4 @@ IonDB.connect()
 
 from pyEQL.solution import Solution  # noqa: E402
 
-# Optional: Print units during initialization for debugging
-print("Successfully initialized the unit registry with the following units:")
-print(list(ureg))
 
