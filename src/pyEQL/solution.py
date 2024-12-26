@@ -37,6 +37,79 @@ EQUIV_WT_CACO3 = ureg.Quantity(100.09 / 2, "g/mol")
 UNKNOWN_OXI_STATE = "unk"
 K_W = 1e-14  # ion product of water at 25 degC
 
+def preprocess_units(amount: str) -> str:
+    """
+    Preprocess the unit string to handle custom units like 'ppb' and '%'.
+    Args:
+        amount (str): The input amount with units (e.g., '1000 ppb', '0.1%').
+    Returns:
+        str: A modified amount string compatible with Pint.
+    """
+    if "ppb" in amount:
+        return amount.replace("ppb", "microgram/liter")
+    elif "%" in amount:
+        # Convert '%' to a dimensionless fraction
+        value, unit = amount.split()
+        return f"{float(value) / 100} dimensionless"
+    return amount  # Return unchanged if no custom units
+
+def add_solute(self, formula: str, amount: str):
+    """
+    Primary method for adding substances to a pyEQL solution.
+    """
+    # Preprocess the amount to handle custom units
+    amount = preprocess_units(amount)
+
+    if ureg.Quantity(amount).dimensionality in (
+        "[substance]/[length]**3",
+        "[mass]/[length]**3",
+    ):
+        orig_volume = self.volume
+        quantity = ureg.Quantity(amount)
+        mw = self.get_property(formula, "molecular_weight")
+        target_mol = quantity.to("moles", "chem", mw=mw, volume=self.volume, solvent_mass=self.solvent_mass)
+        self.components[formula] = target_mol.to("moles").magnitude
+        solute_vol = self._get_solute_volume()
+        target_vol = orig_volume - solute_vol
+        target_mass = target_vol * ureg.Quantity(self.water_substance.rho, "g/L")
+        mw = self.get_property(self.solvent, "molecular_weight")
+        if mw is None:
+            raise ValueError(f"Molecular weight for solvent {self.solvent} not found in database. Cannot proceed.")
+        target_mol = target_mass.to("g") / mw.to("g/mol")
+        self.components[self.solvent] = target_mol.magnitude
+    else:
+        quantity = ureg.Quantity(amount)
+        mw = ureg.Quantity(self.get_property(formula, "molecular_weight"))
+        target_mol = quantity.to("moles", "chem", mw=mw, volume=self.volume, solvent_mass=self.solvent_mass)
+        self.components[formula] = target_mol.to("moles").magnitude
+        self.volume_update_required = True
+
+def __init__(
+    self,
+    solutes: list[list[str]] | dict[str, str] | None = None,
+    volume: str | None = None,
+    temperature: str = "298.15 K",
+    pressure: str = "1 atm",
+    pH: float = 7,
+    pE: float = 8.5,
+    balance_charge: str | None = None,
+    solvent: str | list = "H2O",
+    engine: EOS | Literal["native", "ideal", "phreeqc"] = "native",
+    database: str | Path | Store | None = None,
+    default_diffusion_coeff: float = 1.6106e-9,
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] | None = "ERROR",
+) -> None:
+    self.solvent = solvent
+    self.components = {}
+    if solutes:
+        if isinstance(solutes, dict):
+            for formula, amount in solutes.items():
+                self.add_solute(formula, amount)
+        elif isinstance(solutes, list):
+            for formula, amount in solutes:
+                self.add_solute(formula, amount)
+
+
 
 class Solution(MSONable):
     """
