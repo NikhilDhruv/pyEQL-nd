@@ -1,30 +1,39 @@
 import sys
 import os
 
-# Add the 'src' directory to the Python path so it can locate 'solution.py'
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
+# Add the path to the pyEQL package if it's not installed as a package yet
+# Replace '/path/to/pyEQL-nd' with the actual path to your pyEQL-nd directory
+sys.path.append('/Users/Nikhil/Documents/GitHub/pyEQL-nd ')
 
-from solution import Solution  # Now it will correctly import the Solution class
+from pyEQL.solution import Solution
 
-def test_solution():
-    """
-    Test the Solution class for handling units like 'ppb' and '%'.
-    """
+# Test Cases
+def test_solution_init_with_supported_units():
     try:
-        # Create a Solution instance with a solute using 'ppb'
+        # Initialize with a valid unit
         s = Solution({'Ca+2': '1000 ppb'})
-        print("Solution initialized successfully with 'ppb'.")
-
-        # Test get_amount for ppb
-        amount_ppb = s.get_amount('Ca+2', 'ppb')
-        print(f"Amount in ppb: {amount_ppb}")
-
-        # Test get_amount for %
-        amount_percent = s.get_amount('Ca+2', '%')
-        print(f"Amount in %: {amount_percent}")
-
+        print("Test 1: Passed - Solution initialized with 'ppb'")
     except Exception as e:
-        print(f"An error occurred: {e}")
+        print("Test 1: Failed -", e)
 
+def test_get_amount_with_different_units():
+    try:
+        # Initialize the solution
+        s = Solution({'Ca+2': '1 ppm'})
+        
+        # Get amount in 'ppb'
+        ppb_amount = s.get_amount('Ca+2', 'ppb')
+        print("Test 2: Passed - Amount in 'ppb':", ppb_amount)
+        
+        # Get amount in '%'
+        percent_amount = s.get_amount('Ca+2', '%')
+        print("Test 3: Passed - Amount in '%':", percent_amount)
+    except Exception as e:
+        print("Test 2/3: Failed -", e)
+
+# Run tests
 if __name__ == "__main__":
-    test_solution()
+    print("Running tests for pyEQL Solution class...\n")
+    
+    test_solution_init_with_supported_units()
+    test_get_amount_with_different_units()
