@@ -1,10 +1,10 @@
 import sys
 import os
 
-# Add the parent directory to the Python path so 'src' can be imported
+# Add the 'src' directory to the Python path so it can locate 'solution.py'
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
-from solution import Solution
+from solution import Solution  # Now it will correctly import the Solution class
 
 def test_solution():
     """
