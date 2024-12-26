@@ -37,6 +37,14 @@ EQUIV_WT_CACO3 = ureg.Quantity(100.09 / 2, "g/mol")
 UNKNOWN_OXI_STATE = "unk"
 K_W = 1e-14  # ion product of water at 25 degC
 
+from pyEQL import ureg
+
+# Extend the UnitRegistry with custom units
+ureg.define('ppb = 1e-9 * mole / mole = parts_per_billion')
+ureg.define('ppm = 1e-6 * mole / mole = parts_per_million')
+ureg.define('% = 0.01 * mole / mole = percent')
+
+
 def preprocess_units(amount: str) -> str:
     """
     Preprocess the unit string to handle custom units like 'ppb' and '%'.
