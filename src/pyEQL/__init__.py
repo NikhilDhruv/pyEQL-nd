@@ -9,7 +9,6 @@ and performing chemical thermodynamics computations.
 import logging
 from importlib.metadata import PackageNotFoundError, version  # pragma: no cover
 from importlib.resources import files
-from pathlib import Path
 
 from maggma.stores import JSONStore
 from pint import UnitRegistry
@@ -28,10 +27,11 @@ logger = logging.getLogger("pyEQL")
 logger.setLevel(logging.WARNING)
 logger.addHandler(logging.NullHandler())
 
+
 # Units handling
 # per the pint documentation, it's important that pint and its associated Unit
 # Registry are only instantiated once.
-# here we assign the identifier 'ureg' to the UnitRegistry
+# here we assign the identifier 'unit' to the UnitRegistry
 # the cache_folder arg is added to speed up registry instantiation
 ureg = UnitRegistry(cache_folder=":auto:")
 # convert "offset units" so that, e.g. Quantity('25 degC') works without error
@@ -41,37 +41,6 @@ ureg.autoconvert_offset_to_baseunit = True
 ureg.enable_contexts("chemistry")
 # set the default string formatting for pint quantities
 ureg.formatter.default_format = "P~"
-
-# Extend the Unit Registry with missing units programmatically
-try:
-    if "ppb" not in ureg:
-        ureg.define("ppb = 1e-9 * dimensionless")
-    if "percent" not in ureg:
-        ureg.define("percent = 0.01 * dimensionless")
-except ValueError:
-    # If units are already defined, skip
-    pass
-
-# Debugging: Verify that ppb and percent are defined in the registry
-if "ppb" in ureg and "percent" in ureg:
-    print("Units successfully defined: ppb and percent")
-else:
-    print("Programmatic unit definition failed: ppb or percent not in registry")
-
-# Alternative: Load units from a custom definitions file if needed
-custom_units_path = Path(__file__).parent / "custom_units.txt"
-if custom_units_path.exists():
-    try:
-        ureg.load_definitions(str(custom_units_path))
-        print("Custom units file loaded successfully.")
-    except Exception as e:
-        print(f"Error loading custom units file: {e}")
-
-# Debugging: Confirm units are loaded
-if "ppb" in ureg and "percent" in ureg:
-    print("Final confirmation: ppb and percent units are available.")
-else:
-    print("Unit definition (both programmatic and file-based) failed.")
 
 # create a Store for the default database
 json_db_file = files("pyEQL") / "database" / "pyeql_db.json"
