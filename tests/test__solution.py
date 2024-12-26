@@ -1,4 +1,10 @@
-from src.solution import Solution
+import sys
+import os
+
+# Add the parent directory to the Python path so 'src' can be imported
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
+
+from solution import Solution
 
 def test_solution():
     """
