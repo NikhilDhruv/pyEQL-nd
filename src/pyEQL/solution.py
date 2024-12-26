@@ -45,91 +45,85 @@ class Solution(MSONable):
     """
 
     def __init__(
-        self,
-        solutes: list[list[str]] | dict[str, str] | None = None,
-        volume: str | None = None,
-        temperature: str = "298.15 K",
-        pressure: str = "1 atm",
-        pH: float = 7,
-        pE: float = 8.5,
-        balance_charge: str | None = None,
-        solvent: str | list = "H2O",
-        engine: EOS | Literal["native", "ideal", "phreeqc"] = "native",
-        database: str | Path | Store | None = None,
-        default_diffusion_coeff: float = 1.6106e-9,
-        log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] | None = "ERROR",
-    ) -> None:
-        """
-        Instantiate a Solution from a composition.
+    self,
+    solutes: list[list[str]] | dict[str, str] | None = None,
+    volume: str | None = None,
+    temperature: str = "298.15 K",
+    pressure: str = "1 atm",
+    pH: float = 7,
+    pE: float = 8.5,
+    balance_charge: str | None = None,
+    solvent: str | list = "H2O",
+    engine: EOS | Literal["native", "ideal", "phreeqc"] = "native",
+    database: str | Path | Store | None = None,
+    default_diffusion_coeff: float = 1.6106e-9,
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] | None = "ERROR",
+) -> None:
+    """
+    Instantiate a Solution from a composition.
+    """
+    # Initialize basic solution attributes
+    self.volume = ureg.Quantity(volume or "1 L")
+    self.temperature = ureg.Quantity(temperature)
+    self.pressure = ureg.Quantity(pressure)
+    self.pH = pH
+    self.pE = pE
+    self.balance_charge = balance_charge
+    self.solvent = solvent
+    self.engine = engine
+    self.database = database
+    self.default_diffusion_coeff = default_diffusion_coeff
+    self.logger = logging.getLogger("pyEQL.Solution")
+    if log_level:
+        self.logger.setLevel(log_level)
 
-        Args:
-            solutes: dict, optional. Keys must be the chemical formula, while values must be
-                str Quantity representing the amount. For example:
+    # Initialize solution components
+    self.components = {}
 
-                {"Na+": "0.1 mol/L", "Cl-": "0.1 mol/L"}
+    # Parse solutes
+    if solutes:
+        if isinstance(solutes, dict):
+            for formula, amount in solutes.items():
+                self.add_solute(formula, amount)
+        elif isinstance(solutes, list) and all(isinstance(i, list) and len(i) == 2 for i in solutes):
+            for formula, amount in solutes:
+                self.add_solute(formula, amount)
+        else:
+            raise ValueError("Solutes must be a dict or a list of [formula, amount] pairs.")
 
-                Note that an older "list of lists" syntax is also supported; however this
-                will be deprecated in the future and is no longer recommended. The equivalent
-                list syntax for the above example is
+    # Ensure volume consistency
+    self.volume_update_required = False
 
-                [["Na+", "0.1 mol/L"], ["Cl-", "0.1 mol/L"]]
+    # Handle special units like "%" and "ppb"
+    for formula, amount in self.components.items():
+        if isinstance(amount, str) and ("%" in amount or "ppb" in amount):
+            try:
+                self.components[formula] = ureg.Quantity(amount)
+            except UndefinedUnitError:
+                self.logger.error(f"Unit {amount} for {formula} is not defined in the unit registry.")
 
-                Defaults to empty (pure solvent) if omitted
-            volume: str, optional
-                Volume of the solvent, including the unit. Defaults to '1 L' if omitted.
-                Note that the total solution volume will be computed using partial molar
-                volumes of the respective solutes as they are added to the solution.
-            temperature: str, optional
-                The solution temperature, including the ureg. Defaults to '25 degC' if omitted.
-            pressure: Quantity, optional
-                The ambient pressure of the solution, including the unit.
-                Defaults to '1 atm' if omitted.
-            pH: number, optional
-                Negative log of H+ activity. If omitted, the solution will be
-                initialized to pH 7 (neutral) with appropriate quantities of
-                H+ and OH- ions
-            pE: the pE value (redox potential) of the solution.     Lower values = more reducing,
-                higher values = more oxidizing. At pH 7, water is stable between approximately
-                -7 to +14. The default value corresponds to a pE value typical of natural
-                waters in equilibrium with the atmosphere.
-            balance_charge: The strategy for balancing charge during init and equilibrium calculations. Valid options
-                are
-                    - 'pH', which will adjust the solution pH to balance charge,
-                    - 'auto' which will use the majority cation or anion (i.e., that with the largest concentration)
-                    as needed,
-                    - 'pE' (not currently implemented) which will adjust the redox equilibrium to balance charge, or
-                    the name of a dissolved species e.g. 'Ca+2' or 'Cl-' that will be added/subtracted to balance
-                    charge.
-                    - None (default), in which case no charge balancing will be performed either on init or when
-                    equilibrate() is called. Note that in this case, equilibrate() can distort the charge balance!
-            solvent: Formula of the solvent. Solvents other than water are not supported at this time.
-            engine: Electrolyte modeling engine to use. See documentation for details on the available engines.
-            database: path to a .json file (str or Path) or maggma Store instance that
-                contains serialized SoluteDocs. `None` (default) will use the built-in pyEQL database.
-            log_level: Log messages of this or higher severity will be printed to stdout. Defaults to 'ERROR', meaning
-                that ERROR and CRITICAL messages will be shown, while WARNING, INFO, and DEBUG messages are not. If set to None, nothing will be printed.
-            default_diffusion_coeff: Diffusion coefficient value in m^2/s to use in
-                calculations when there is no diffusion coefficient for a species in the database. This affects several
-                important property calculations including conductivity and transport number, which are related to the
-                weighted sums of diffusion coefficients of all species. Setting this argument to zero will exclude any
-                species that does not have a tabulated diffusion coefficient from these calculations, possibly resulting
-                in underestimation of the conductivity and/or inaccurate transport numbers.
+        def preprocess_units(amount: str) -> str:
+    """
+    Convert unsupported units into pint-compatible equivalents.
+    
+    Args:
+        amount: The input quantity string, e.g., '1000 ppb'.
 
-                Missing diffusion coefficients are especially likely in complex electrolytes containing, for example,
-                complexes or paired species such as NaSO4[-1]. In such cases, setting default_diffusion_coeff  to zero
-                is likely to result in the above errors.
+    Returns:
+        A pint-compatible quantity string.
+    """
+    if "ppb" in amount:
+        value = amount.replace("ppb", "").strip()
+        return f"{value} microgram/L"
+    elif "ppm" in amount:
+        value = amount.replace("ppm", "").strip()
+        return f"{value} milligram/L"
+    elif "%" in amount:
+        value = amount.replace("%", "").strip()
+        return f"{value} dimensionless"
+    return amount  # Return unchanged if no preprocessing needed
 
-                By default, this argument is set to the diffusion coefficient of NaCl salt, 1.61x10^-9 m2/s.
-
-        Examples:
-            >>> s1 = pyEQL.Solution({'Na+': '1 mol/L','Cl-': '1 mol/L'},temperature='20 degC',volume='500 mL')
-            >>> print(s1)
-            Components:
-            Volume: 0.500 l
-            Pressure: 1.000 atm
-            Temperature: 293.150 K
-            Components: ['H2O(aq)', 'H[+1]', 'OH[-1]', 'Na[+1]', 'Cl[-1]']
-        """
+        
         # create a logger and attach it to this class
         self.log_level = log_level.upper()
         self.logger = logging.getLogger("pyEQL")
@@ -1207,60 +1201,64 @@ class Solution(MSONable):
         return TOT
 
     def add_solute(self, formula: str, amount: str):
-        """Primary method for adding substances to a pyEQL solution.
+    """
+    Primary method for adding substances to a pyEQL solution.
 
-        Args:
-            formula (str): Chemical formula for the solute. Charged species must contain a + or - and
-            (for polyvalent solutes) a number representing the net charge (e.g. 'SO4-2').
-            amount (str): The amount of substance in the specified unit system. The string should contain
-            both a quantity and a pint-compatible representation of a ureg. e.g. '5 mol/kg' or '0.1 g/L'.
-        """
-        # if units are given on a per-volume basis,
-        # iteratively solve for the amount of solute that will preserve the
-        # original volume and result in the desired concentration
-        if ureg.Quantity(amount).dimensionality in (
-            "[substance]/[length]**3",
-            "[mass]/[length]**3",
-        ):
-            # store the original volume for later
-            orig_volume = self.volume
+    Args:
+        formula (str): Chemical formula for the solute. Charged species must contain a + or - and
+        (for polyvalent solutes) a number representing the net charge (e.g. 'SO4-2').
+        amount (str): The amount of substance in the specified unit system. The string should contain
+        both a quantity and a pint-compatible representation of a ureg. e.g. '5 mol/kg' or '0.1 g/L'.
+    """
+    # Preprocess the amount string to ensure compatibility with Pint
+    amount = preprocess_units(amount)
 
-            # add the new solute
-            quantity = ureg.Quantity(amount)
-            mw = self.get_property(formula, "molecular_weight")  # returns a quantity
-            target_mol = quantity.to("moles", "chem", mw=mw, volume=self.volume, solvent_mass=self.solvent_mass)
-            self.components[formula] = target_mol.to("moles").magnitude
+    # if units are given on a per-volume basis,
+    # iteratively solve for the amount of solute that will preserve the
+    # original volume and result in the desired concentration
+    if ureg.Quantity(amount).dimensionality in (
+        "[substance]/[length]**3",
+        "[mass]/[length]**3",
+    ):
+        # store the original volume for later
+        orig_volume = self.volume
 
-            # calculate the volume occupied by all the solutes
-            solute_vol = self._get_solute_volume()
+        # add the new solute
+        quantity = ureg.Quantity(amount)
+        mw = self.get_property(formula, "molecular_weight")  # returns a quantity
+        target_mol = quantity.to("moles", "chem", mw=mw, volume=self.volume, solvent_mass=self.solvent_mass)
+        self.components[formula] = target_mol.to("moles").magnitude
 
-            # determine the volume of solvent that will preserve the original volume
-            target_vol = orig_volume - solute_vol
+        # calculate the volume occupied by all the solutes
+        solute_vol = self._get_solute_volume()
 
-            # adjust the amount of solvent
-            # density is returned in kg/m3 = g/L
-            target_mass = target_vol * ureg.Quantity(self.water_substance.rho, "g/L")
-            # mw = ureg.Quantity(self.get_property(self.solvent_name, "molecular_weight"))
-            mw = self.get_property(self.solvent, "molecular_weight")
-            if mw is None:
-                raise ValueError(f"Molecular weight for solvent {self.solvent} not found in database. Cannot proceed.")
-            target_mol = target_mass.to("g") / mw.to("g/mol")
-            self.components[self.solvent] = target_mol.magnitude
+        # determine the volume of solvent that will preserve the original volume
+        target_vol = orig_volume - solute_vol
 
-        else:
-            # add the new solute
-            quantity = ureg.Quantity(amount)
-            mw = ureg.Quantity(self.get_property(formula, "molecular_weight"))
-            target_mol = quantity.to("moles", "chem", mw=mw, volume=self.volume, solvent_mass=self.solvent_mass)
-            self.components[formula] = target_mol.to("moles").magnitude
+        # adjust the amount of solvent
+        # density is returned in kg/m3 = g/L
+        target_mass = target_vol * ureg.Quantity(self.water_substance.rho, "g/L")
+        # mw = ureg.Quantity(self.get_property(self.solvent_name, "molecular_weight"))
+        mw = self.get_property(self.solvent, "molecular_weight")
+        if mw is None:
+            raise ValueError(f"Molecular weight for solvent {self.solvent} not found in database. Cannot proceed.")
+        target_mol = target_mass.to("g") / mw.to("g/mol")
+        self.components[self.solvent] = target_mol.magnitude
 
-            # update the volume to account for the space occupied by all the solutes
-            # make sure that there is still solvent present in the first place
-            if self.solvent_mass <= ureg.Quantity(0, "kg"):
-                self.logger.error("All solvent has been depleted from the solution")
-                return
-            # set the volume recalculation flag
-            self.volume_update_required = True
+    else:
+        # add the new solute
+        quantity = ureg.Quantity(amount)
+        mw = ureg.Quantity(self.get_property(formula, "molecular_weight"))
+        target_mol = quantity.to("moles", "chem", mw=mw, volume=self.volume, solvent_mass=self.solvent_mass)
+        self.components[formula] = target_mol.to("moles").magnitude
+
+        # update the volume to account for the space occupied by all the solutes
+        # make sure that there is still solvent present in the first place
+        if self.solvent_mass <= ureg.Quantity(0, "kg"):
+            self.logger.error("All solvent has been depleted from the solution")
+            return
+        # set the volume recalculation flag
+        self.volume_update_required = True
 
     # TODO - deprecate this method. Solvent should be added to the dict like anything else
     # and solvent_name will track which component it is.
@@ -2722,6 +2720,8 @@ class Solution(MSONable):
 
         return result_list
 
+
+    
     @deprecated(
         message="list_activities() is deprecated and will be removed in the next release! Use Solution.print() instead.)"
     )
